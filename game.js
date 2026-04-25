@@ -20,6 +20,12 @@
   const CUP_MIX_BOB_LIMIT = 24;
   const CUP_MIX_BOB_STIFFNESS = 92;
   const CUP_MIX_BOB_DAMPING = 8.5;
+  const FREE_GUMMY_GRAVITY = 680;
+  const CUP_SIDE_BOUNCE_MARGIN = 8;
+  const CUP_SIDE_BOUNCE_COOLDOWN = 85;
+  const CUP_SIDE_BOUNCE_MAX_SPEED = 360;
+  const STAGE_WALL_BOUNCE = 0.86;
+  const WALL_UPWARD_WINDOW = 900;
   const NORMAL_GUMMY_RADIUS = 18;
   const NORMAL_GUMMY_RADIUS_VARIANCE = 2.4;
   const GIANT_START_LEVEL = 5;
@@ -216,15 +222,13 @@
 
   function updateFalling(dt, now) {
     const fallSpeed = 116 + level * 9 + Math.min(70, elapsed * 0.7);
-    falling.vy = fallSpeed;
+    falling.vy += FREE_GUMMY_GRAVITY * dt;
+    falling.vy = Math.min(falling.vy, fallSpeed);
     falling.x += falling.vx * dt;
     falling.y += falling.vy * dt;
     falling.rotation += falling.spin * dt;
 
-    if (falling.x < falling.r || falling.x > W - falling.r) {
-      falling.vx *= -0.8;
-      falling.x = clamp(falling.x, falling.r, W - falling.r);
-    }
+    bounceOffStageSideWalls(falling, now);
 
     const localToCup = worldToCup(falling.x, falling.y);
     if (localToCup.y + falling.r >= -6 && isTouchingCupTop(falling, localToCup)) {
@@ -232,7 +236,10 @@
       return;
     }
 
+    bounceOffCupSide(falling, now);
+
     if (falling.y + falling.r >= H) {
+      if (keepRecentBounceAboveBottom(falling, now)) return;
       falling.y = H - falling.r;
       splashAt(falling.x, falling.y, falling.color, 16);
       endGame("取りこぼし");
@@ -287,6 +294,7 @@
         if (escaped) limitEscapedFallSpeed(g, now);
         g.x += g.vx * step;
         g.y += g.vy * step;
+        if (escaped) bounceOffStageSideWalls(g, now);
         g.spin += (g.vx * 0.0012 + g.spinSpeed * 0.25) * step;
         g.squish = Math.max(0, g.squish - step * 4);
       }
@@ -351,6 +359,8 @@
     if (!g.inCup) {
       if (canReenterCup(g, local, now)) {
         placeGummyInCup(g, local, now);
+      } else {
+        bounceOffCupSide(g, now);
       }
       return;
     }
@@ -363,7 +373,140 @@
       g.inCup = false;
       g.escapedAt = now;
       g.vx += cup.vx * 0.05;
+      g.lastCupSideBounce = 0;
+      g.lastWallBounce = 0;
     }
+  }
+
+  function bounceOffStageSideWalls(g, now) {
+    let bounced = false;
+
+    if (g.x < g.r) {
+      g.x = g.r;
+      if (g.vx < 0) {
+        g.vx = Math.abs(g.vx) * STAGE_WALL_BOUNCE;
+        bounced = true;
+      }
+    } else if (g.x > W - g.r) {
+      g.x = W - g.r;
+      if (g.vx > 0) {
+        g.vx = -Math.abs(g.vx) * STAGE_WALL_BOUNCE;
+        bounced = true;
+      }
+    }
+
+    if (!bounced) return false;
+
+    g.lastWallBounce = now;
+    if (isRecent(g.lastCupSideBounce, now, WALL_UPWARD_WINDOW)) {
+      const wallLift = 78 + Math.min(64, Math.abs(g.vx) * 0.16);
+      g.vy = Math.min(g.vy, -wallLift);
+    }
+    g.squish = Math.max(g.squish || 0, 0.18);
+    return true;
+  }
+
+  function bounceOffCupSide(g, now) {
+    if (isRecent(g.lastCupSideBounce, now, CUP_SIDE_BOUNCE_COOLDOWN)) return false;
+
+    const hit = cupSideCollision(g);
+    if (!hit) return false;
+
+    const corrected = cupToWorld(
+      hit.localX + hit.normalX * hit.penetration,
+      hit.localY + hit.normalY * hit.penetration * 0.65
+    );
+    g.x = corrected.x;
+    g.y = corrected.y;
+
+    const bounceLocal = normalizeVector(hit.side * 0.88, -0.42);
+    const bounceWorld = localVectorToWorld(bounceLocal.x, bounceLocal.y);
+    const surfaceVx = cup.vx;
+    const surfaceVy = cup.bobVelocity * 0.12;
+    const relVx = g.vx - surfaceVx;
+    const relVy = g.vy - surfaceVy;
+    const normalSpeed = Math.abs(relVx * bounceWorld.x + relVy * bounceWorld.y);
+    const impact = clamp(
+      152 + normalSpeed * 0.55 + Math.abs(cup.vx) * 0.2 + Math.max(0, g.vy) * 0.16,
+      150,
+      CUP_SIDE_BOUNCE_MAX_SPEED
+    );
+
+    g.vx = g.vx * 0.28 + surfaceVx * 0.18 + bounceWorld.x * impact;
+    g.vy = g.vy * 0.22 + surfaceVy + bounceWorld.y * impact;
+    g.vy = clamp(g.vy, -320, 180);
+    g.lastCupSideBounce = now;
+    g.squish = Math.max(g.squish || 0, 0.24);
+    if ("spinSpeed" in g) g.spinSpeed += hit.side * 1.3;
+    else g.spin += hit.side * 0.42;
+
+    cup.shake = Math.min(1, cup.shake + 0.24);
+    splashAt(g.x, g.y, g.color, 5);
+    return true;
+  }
+
+  function cupSideCollision(g) {
+    const local = worldToCup(g.x, g.y);
+    if (local.y < -g.r * 0.45 || local.y > cup.height + g.r + 28) return null;
+
+    let best = null;
+    for (const side of [-1, 1]) {
+      const top = { x: side * (cup.topWidth / 2 + 18), y: 8 };
+      const bottom = { x: side * (cup.bottomWidth / 2 + 8), y: cup.height + 28 };
+      const point = closestPointOnSegment(local.x, local.y, top.x, top.y, bottom.x, bottom.y);
+      const dx = local.x - point.x;
+      const dy = local.y - point.y;
+      const dist = Math.hypot(dx, dy) || 0.001;
+      const normalX = dx / dist;
+      const normalY = dy / dist;
+      if (normalX * side < 0.12) continue;
+
+      const penetration = g.r + CUP_SIDE_BOUNCE_MARGIN - dist;
+      if (penetration <= 0) continue;
+      if (!best || penetration > best.penetration) {
+        best = { side, normalX, normalY, penetration, localX: local.x, localY: local.y };
+      }
+    }
+
+    return best;
+  }
+
+  function closestPointOnSegment(px, py, ax, ay, bx, by) {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const lenSq = abx * abx + aby * aby || 1;
+    const t = clamp(((px - ax) * abx + (py - ay) * aby) / lenSq, 0, 1);
+    return {
+      x: ax + abx * t,
+      y: ay + aby * t
+    };
+  }
+
+  function localVectorToWorld(localX, localY) {
+    const c = Math.cos(cup.angle);
+    const s = Math.sin(cup.angle);
+    return {
+      x: localX * c - localY * s,
+      y: localX * s + localY * c
+    };
+  }
+
+  function normalizeVector(x, y) {
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  }
+
+  function keepRecentBounceAboveBottom(g, now) {
+    const recentBounce =
+      isRecent(g.lastCupSideBounce, now, 160) || isRecent(g.lastWallBounce, now, 160);
+    if (!recentBounce || g.vy >= 0) return false;
+
+    g.y = H - g.r - 1;
+    return true;
+  }
+
+  function isRecent(timestamp, now, duration) {
+    return timestamp > 0 && now - timestamp < duration;
   }
 
   function resolveBodyCollisions() {
@@ -601,6 +744,7 @@
       if (g.inCup) continue;
 
       if (g.y + g.r >= H) {
+        if (keepRecentBounceAboveBottom(g, now)) continue;
         g.y = H - g.r;
         splashAt(g.x, g.y, g.color, 18);
         endGame("あふれた");
