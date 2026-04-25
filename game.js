@@ -12,6 +12,14 @@
   const H = 760;
   const GRAVITY = 760;
   const MAX_UPWARD_SPEED = 90;
+  const NORMAL_GUMMY_RADIUS = 18;
+  const NORMAL_GUMMY_RADIUS_VARIANCE = 2.4;
+  const GIANT_START_LEVEL = 5;
+  const GIANT_START_CHANCE = 1 / 20;
+  const GIANT_MAX_CHANCE = 1 / 4;
+  const GIANT_LEVEL_STEP = 2;
+  const GIANT_CHANCE_STEPS = 3;
+  const GIANT_RADIUS_MULTIPLIER = Math.sqrt(3);
   const colors = [
     { base: "#f65368", light: "#ffb8c1", dark: "#bc2440" },
     { base: "#ff9a3d", light: "#ffd09a", dark: "#c55f15" },
@@ -48,7 +56,7 @@
   const scoreBursts = [];
 
   let falling;
-  let nextColor = 0;
+  let nextGummy = null;
   let score = 0;
   let chainText = "";
   let level = 1;
@@ -90,25 +98,47 @@
     state = "playing";
     pauseButton.textContent = "⏸";
     pauseButton.setAttribute("aria-label", "一時停止");
-    nextColor = randomColor();
+    nextGummy = createGummySpec();
     spawnGummy();
     canvas.focus({ preventScroll: true });
   }
 
   function spawnGummy() {
-    const margin = 58;
+    const spec = nextGummy || createGummySpec();
+    const margin = Math.max(58, spec.r + 24);
     falling = {
-      color: nextColor,
+      color: spec.color,
       seed: Math.random() * 1000,
       x: margin + Math.random() * (W - margin * 2),
-      y: -36,
+      y: -spec.r - 18,
       vx: -18 + Math.random() * 36,
       vy: 0,
-      r: 18 + Math.random() * 2.4,
+      r: spec.r,
+      isGiant: spec.isGiant,
+      matchSize: spec.matchSize,
       spin: -0.25 + Math.random() * 0.5,
       rotation: -0.2 + Math.random() * 0.4
     };
-    nextColor = randomColor();
+    nextGummy = createGummySpec();
+  }
+
+  function createGummySpec() {
+    const isGiant = Math.random() < giantChanceForLevel(level);
+    const baseRadius = NORMAL_GUMMY_RADIUS + Math.random() * NORMAL_GUMMY_RADIUS_VARIANCE;
+    return {
+      color: randomColor(),
+      isGiant,
+      matchSize: isGiant ? 3 : 1,
+      r: baseRadius * (isGiant ? GIANT_RADIUS_MULTIPLIER : 1)
+    };
+  }
+
+  function giantChanceForLevel(currentLevel) {
+    if (currentLevel < GIANT_START_LEVEL) return 0;
+
+    const step = Math.floor((currentLevel - GIANT_START_LEVEL) / GIANT_LEVEL_STEP);
+    const progress = clamp(step / GIANT_CHANCE_STEPS, 0, 1);
+    return GIANT_START_CHANCE + (GIANT_MAX_CHANCE - GIANT_START_CHANCE) * progress;
   }
 
   function endGame(reason) {
@@ -204,6 +234,8 @@
       vx: falling.vx * 0.35 - cup.vx * 0.08 + edgeNudge,
       vy: falling.vy * 0.42,
       r: falling.r,
+      isGiant: falling.isGiant,
+      matchSize: falling.matchSize,
       spin: falling.rotation,
       spinSpeed: falling.spin,
       caughtAt: now,
@@ -437,10 +469,10 @@
         if (removed.has(index)) continue;
         const g = gummies[index];
         removed.add(index);
-        scoreAdded += 110;
+        scoreAdded += 110 * (g.matchSize || 1);
         splashAt(g.x, g.y, g.color, 14);
       }
-      scoreAdded += Math.max(0, group.length - 4) * 55;
+      scoreAdded += Math.max(0, groupValue(group) - 4) * 55;
     }
 
     for (let i = gummies.length - 1; i >= 0; i -= 1) {
@@ -484,10 +516,14 @@
         }
       }
 
-      if (group.length >= 4) groups.push(group);
+      if (groupValue(group) >= 4) groups.push(group);
     }
 
     return groups;
+  }
+
+  function groupValue(group) {
+    return group.reduce((total, index) => total + (gummies[index].matchSize || 1), 0);
   }
 
   function areTouching(a, b) {
@@ -624,7 +660,8 @@
     ctx.fillStyle = "rgba(38, 50, 58, 0.62)";
     ctx.font = "800 13px system-ui, sans-serif";
     ctx.fillText("NEXT", W - 98, 29);
-    drawGummy(W - 70, 62, 20, nextColor, 0, 8, 0.05, 1);
+    const preview = nextGummy || { color: 0, isGiant: false };
+    drawGummy(W - 70, 62, preview.isGiant ? 28 : 20, preview.color, 0, 8, 0.05, 1);
     ctx.restore();
   }
 
