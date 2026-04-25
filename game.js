@@ -115,7 +115,6 @@
       vy: 0,
       r: spec.r,
       isGiant: spec.isGiant,
-      matchSize: spec.matchSize,
       spin: -0.25 + Math.random() * 0.5,
       rotation: -0.2 + Math.random() * 0.4
     };
@@ -128,7 +127,6 @@
     return {
       color: randomColor(),
       isGiant,
-      matchSize: isGiant ? 3 : 1,
       r: baseRadius * (isGiant ? GIANT_RADIUS_MULTIPLIER : 1)
     };
   }
@@ -235,7 +233,6 @@
       vy: falling.vy * 0.42,
       r: falling.r,
       isGiant: falling.isGiant,
-      matchSize: falling.matchSize,
       spin: falling.rotation,
       spinSpeed: falling.spin,
       caughtAt: now,
@@ -469,10 +466,10 @@
         if (removed.has(index)) continue;
         const g = gummies[index];
         removed.add(index);
-        scoreAdded += 110 * (g.matchSize || 1);
+        scoreAdded += 110;
         splashAt(g.x, g.y, g.color, 14);
       }
-      scoreAdded += Math.max(0, groupValue(group) - 4) * 55;
+      scoreAdded += Math.max(0, group.length - 4) * 55;
     }
 
     for (let i = gummies.length - 1; i >= 0; i -= 1) {
@@ -516,14 +513,10 @@
         }
       }
 
-      if (groupValue(group) >= 4) groups.push(group);
+      if (group.length >= 4) groups.push(group);
     }
 
     return groups;
-  }
-
-  function groupValue(group) {
-    return group.reduce((total, index) => total + (gummies[index].matchSize || 1), 0);
   }
 
   function areTouching(a, b) {
