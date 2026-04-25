@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ぷるぷるグミカップ</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="game-frame" aria-label="ぷるぷるグミカップ">
+        <canvas
+          id="gameCanvas"
+          width="900"
+          height="760"
+          tabindex="0"
+          aria-label="落ちてくるグミをコップで受け止めるパズルゲーム"
+        ></canvas>
+      </section>
+
+      <nav class="touch-controls" aria-label="操作">
+        <button id="leftButton" type="button" aria-label="左へ移動">←</button>
+        <button id="pauseButton" type="button" aria-label="一時停止">⏸</button>
+        <button id="restartButton" type="button" aria-label="リスタート">↻</button>
+        <button id="rightButton" type="button" aria-label="右へ移動">→</button>
+      </nav>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>

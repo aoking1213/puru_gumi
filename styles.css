@@ -1,0 +1,107 @@
+:root {
+  color-scheme: light;
+  font-family: "Inter", "Hiragino Sans", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+  background: #eaf8f4;
+  color: #26323a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  overflow-x: hidden;
+  background: linear-gradient(135deg, #f5fbf2 0%, #d8f2ee 48%, #fff5d7 100%);
+}
+
+.game-shell {
+  width: min(100vw, 1020px);
+  min-height: 100vh;
+  padding: clamp(10px, 2.4vw, 22px);
+  display: grid;
+  align-content: center;
+  gap: 12px;
+}
+
+.game-frame {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  border: 1px solid rgba(37, 58, 67, 0.16);
+  border-radius: 8px;
+  padding: clamp(6px, 1.6vw, 12px);
+  background: rgba(255, 255, 255, 0.44);
+  box-shadow: 0 24px 70px rgba(68, 96, 102, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 900 / 760;
+  border-radius: 6px;
+  outline: none;
+  touch-action: none;
+  background: #fffdf4;
+}
+
+.touch-controls {
+  width: min(100%, 520px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 64px 64px 1fr;
+  gap: 10px;
+}
+
+.touch-controls button {
+  min-height: 52px;
+  border: 1px solid rgba(38, 50, 58, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #26323a;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(68, 96, 102, 0.14);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.touch-controls button:active,
+.touch-controls button.is-active {
+  transform: translateY(2px) scale(0.98);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 5px 14px rgba(68, 96, 102, 0.16);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .touch-controls button:hover {
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+@media (max-width: 440px) {
+  .game-shell {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .game-frame {
+    padding: 5px;
+  }
+
+  .touch-controls {
+    grid-template-columns: 1fr 56px 56px 1fr;
+    gap: 8px;
+  }
+
+  .touch-controls button {
+    min-height: 48px;
+    font-size: 24px;
+  }
+}
