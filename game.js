@@ -16,6 +16,10 @@
   const ESCAPED_FLOAT_GRAVITY = 360;
   const ESCAPED_FLOAT_MAX_FALL_SPEED = 120;
   const ESCAPED_LATE_MAX_FALL_SPEED = 170;
+  const CUP_MIX_COOLDOWN = 260;
+  const CUP_MIX_BOB_LIMIT = 24;
+  const CUP_MIX_BOB_STIFFNESS = 92;
+  const CUP_MIX_BOB_DAMPING = 8.5;
   const NORMAL_GUMMY_RADIUS = 18;
   const NORMAL_GUMMY_RADIUS_VARIANCE = 2.4;
   const GIANT_START_LEVEL = 5;
@@ -49,7 +53,12 @@
     accel: 0,
     tilt: 0,
     angle: 0,
-    shake: 0
+    shake: 0,
+    bob: 0,
+    bobVelocity: 0,
+    mixCooldown: 0,
+    mixEnergy: 0,
+    mixDirection: 1
   };
   cup.minX = -cup.topWidth + cup.minVisible;
   cup.maxX = W - cup.minVisible;
@@ -94,6 +103,11 @@
     cup.tilt = 0;
     cup.angle = 0;
     cup.shake = 0;
+    cup.bob = 0;
+    cup.bobVelocity = 0;
+    cup.mixCooldown = 0;
+    cup.mixEnergy = 0;
+    cup.mixDirection = 1;
     score = 0;
     level = 1;
     elapsed = 0;
@@ -192,6 +206,11 @@
     const targetTilt = clamp(cup.vx / cup.speed, -1, 1) * 0.12;
     cup.tilt += (targetTilt - cup.tilt) * Math.min(1, dt * 9);
     cup.shake = Math.max(0, cup.shake - dt * 2.6);
+    cup.mixCooldown = Math.max(0, cup.mixCooldown - dt * 1000);
+    cup.mixEnergy = Math.max(0, cup.mixEnergy - dt * 3.2);
+    cup.bobVelocity += -cup.bob * CUP_MIX_BOB_STIFFNESS * dt;
+    cup.bobVelocity *= Math.max(0, 1 - CUP_MIX_BOB_DAMPING * dt);
+    cup.bob = clamp(cup.bob + cup.bobVelocity * dt, -CUP_MIX_BOB_LIMIT, CUP_MIX_BOB_LIMIT);
     cup.angle = cup.tilt + Math.sin(t * 18) * cup.shake * 0.035;
   }
 
@@ -298,6 +317,32 @@
       ESCAPED_FLOAT_MAX_FALL_SPEED +
       (ESCAPED_LATE_MAX_FALL_SPEED - ESCAPED_FLOAT_MAX_FALL_SPEED) * progress;
     g.vy = Math.min(g.vy, maxFallSpeed);
+  }
+
+  function stirCup(now) {
+    if (state !== "playing" || cup.mixCooldown > 0) return;
+
+    cup.mixCooldown = CUP_MIX_COOLDOWN;
+    cup.mixEnergy = 1;
+    cup.mixDirection *= -1;
+    cup.bobVelocity = Math.min(cup.bobVelocity, -310);
+    cup.shake = Math.min(1, cup.shake + 0.42);
+
+    for (const g of gummies) {
+      if (!g.inCup) continue;
+
+      const local = worldToCup(g.x, g.y);
+      const half = Math.max(40, halfWidthAt(local.y));
+      const side = clamp(local.x / half, -1, 1);
+      const depth = clamp(local.y / cup.height, 0, 1);
+      const lift = 54 + 38 * depth;
+      const swirl = cup.mixDirection * (46 + 18 * (1 - depth)) - side * 34;
+
+      g.vy -= lift;
+      g.vx += swirl;
+      g.spinSpeed += cup.mixDirection * (0.5 + Math.abs(side) * 0.4);
+      g.squish = Math.max(g.squish, 0.2);
+    }
   }
 
   function updateCupContainment(g, now) {
@@ -693,7 +738,7 @@
     ctx.setLineDash([8, 14]);
     ctx.beginPath();
     ctx.moveTo(falling.x, 92);
-    ctx.lineTo(falling.x, cup.y - 18);
+    ctx.lineTo(falling.x, cupTopY() - 18);
     ctx.stroke();
     ctx.restore();
   }
@@ -743,7 +788,7 @@
     const top = cup.topWidth;
     const bottom = cup.bottomWidth;
     const h = cup.height;
-    const pulse = cup.shake * 9;
+    const pulse = cup.shake * 9 + cup.mixEnergy * 4;
 
     ctx.lineWidth = 5 + pulse * 0.1;
     ctx.strokeStyle = `rgba(80, 155, 168, ${0.5 + cup.shake * 0.26})`;
@@ -951,7 +996,7 @@
     const s = Math.sin(cup.angle);
     return {
       x: cupCenterX() + localX * c - localY * s,
-      y: cup.y + localX * s + localY * c
+      y: cupTopY() + localX * s + localY * c
     };
   }
 
@@ -959,7 +1004,7 @@
     const c = Math.cos(cup.angle);
     const s = Math.sin(cup.angle);
     const dx = x - cupCenterX();
-    const dy = y - cup.y;
+    const dy = y - cupTopY();
     return {
       x: dx * c + dy * s,
       y: -dx * s + dy * c
@@ -967,8 +1012,12 @@
   }
 
   function transformCup() {
-    ctx.translate(cupCenterX(), cup.y);
+    ctx.translate(cupCenterX(), cupTopY());
     ctx.rotate(cup.angle);
+  }
+
+  function cupTopY() {
+    return cup.y + cup.bob;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -1005,6 +1054,9 @@
       } else if (event.key === "ArrowRight") {
         if (state === "playing") keys.right = true;
         event.preventDefault();
+      } else if (event.key === "ArrowUp") {
+        stirCup(performance.now());
+        event.preventDefault();
       } else if (event.key === "p" || event.key === "P" || event.key === "Escape") {
         togglePause();
         event.preventDefault();
@@ -1021,6 +1073,8 @@
         event.preventDefault();
       } else if (event.key === "ArrowRight") {
         keys.right = false;
+        event.preventDefault();
+      } else if (event.key === "ArrowUp") {
         event.preventDefault();
       }
     });
