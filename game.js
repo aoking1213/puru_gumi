@@ -12,6 +12,10 @@
   const H = 760;
   const GRAVITY = 760;
   const MAX_UPWARD_SPEED = 90;
+  const ESCAPED_FLOAT_DURATION = 1800;
+  const ESCAPED_FLOAT_GRAVITY = 360;
+  const ESCAPED_FLOAT_MAX_FALL_SPEED = 120;
+  const ESCAPED_LATE_MAX_FALL_SPEED = 170;
   const NORMAL_GUMMY_RADIUS = 18;
   const NORMAL_GUMMY_RADIUS_VARIANCE = 2.4;
   const GIANT_START_LEVEL = 5;
@@ -254,12 +258,14 @@
 
     for (let s = 0; s < steps; s += 1) {
       for (const g of gummies) {
+        const escaped = isEscapedGummy(g);
         if (g.inCup) {
           g.vx += -cup.accel * 0.18 * step;
         }
-        g.vy += GRAVITY * step;
-        g.vx *= 0.996;
-        g.vy *= 0.997;
+        g.vy += gravityForGummy(g, now) * step;
+        g.vx *= escaped ? 0.988 : 0.996;
+        g.vy *= escaped ? 0.992 : 0.997;
+        if (escaped) limitEscapedFallSpeed(g, now);
         g.x += g.vx * step;
         g.y += g.vy * step;
         g.spin += (g.vx * 0.0012 + g.spinSpeed * 0.25) * step;
@@ -273,6 +279,25 @@
         }
       }
     }
+  }
+
+  function isEscapedGummy(g) {
+    return !g.inCup && g.escapedAt > 0;
+  }
+
+  function gravityForGummy(g, now) {
+    if (!isEscapedGummy(g)) return GRAVITY;
+
+    const progress = clamp((now - g.escapedAt) / ESCAPED_FLOAT_DURATION, 0, 1);
+    return ESCAPED_FLOAT_GRAVITY + (GRAVITY * 0.72 - ESCAPED_FLOAT_GRAVITY) * progress;
+  }
+
+  function limitEscapedFallSpeed(g, now) {
+    const progress = clamp((now - g.escapedAt) / ESCAPED_FLOAT_DURATION, 0, 1);
+    const maxFallSpeed =
+      ESCAPED_FLOAT_MAX_FALL_SPEED +
+      (ESCAPED_LATE_MAX_FALL_SPEED - ESCAPED_FLOAT_MAX_FALL_SPEED) * progress;
+    g.vy = Math.min(g.vy, maxFallSpeed);
   }
 
   function updateCupContainment(g, now) {
