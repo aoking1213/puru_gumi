@@ -16,10 +16,11 @@
   const ESCAPED_FLOAT_GRAVITY = 360;
   const ESCAPED_FLOAT_MAX_FALL_SPEED = 120;
   const ESCAPED_LATE_MAX_FALL_SPEED = 170;
-  const CUP_MIX_COOLDOWN = 260;
-  const CUP_MIX_BOB_LIMIT = 24;
-  const CUP_MIX_BOB_STIFFNESS = 92;
-  const CUP_MIX_BOB_DAMPING = 8.5;
+  const CUP_MIX_COOLDOWN = 320;
+  const CUP_MIX_BOB_LIMIT = 34;
+  const CUP_MIX_BOB_STIFFNESS = 78;
+  const CUP_MIX_BOB_DAMPING = 6.8;
+  const CUP_MIX_ENERGY_DECAY = 2.1;
   const FREE_GUMMY_GRAVITY = 680;
   const CUP_SIDE_BOUNCE_MARGIN = 8;
   const CUP_SIDE_BOUNCE_COOLDOWN = 85;
@@ -228,7 +229,7 @@
     cup.tilt += (targetTilt - cup.tilt) * Math.min(1, dt * 9);
     cup.shake = Math.max(0, cup.shake - dt * 2.6);
     cup.mixCooldown = Math.max(0, cup.mixCooldown - dt * 1000);
-    cup.mixEnergy = Math.max(0, cup.mixEnergy - dt * 3.2);
+    cup.mixEnergy = Math.max(0, cup.mixEnergy - dt * CUP_MIX_ENERGY_DECAY);
     cup.bobVelocity += -cup.bob * CUP_MIX_BOB_STIFFNESS * dt;
     cup.bobVelocity *= Math.max(0, 1 - CUP_MIX_BOB_DAMPING * dt);
     cup.bob = clamp(cup.bob + cup.bobVelocity * dt, -CUP_MIX_BOB_LIMIT, CUP_MIX_BOB_LIMIT);
@@ -303,6 +304,7 @@
         const escaped = isEscapedGummy(g);
         if (g.inCup) {
           g.vx += -cup.accel * 0.18 * step;
+          if (cup.mixEnergy > 0) applyMixingForce(g, step);
         }
         g.vy += gravityForGummy(g, now) * step;
         g.vx *= escaped ? 0.988 : 0.996;
@@ -349,8 +351,8 @@
     cup.mixCooldown = CUP_MIX_COOLDOWN;
     cup.mixEnergy = 1;
     cup.mixDirection *= -1;
-    cup.bobVelocity = Math.min(cup.bobVelocity, -310);
-    cup.shake = Math.min(1, cup.shake + 0.42);
+    cup.bobVelocity = Math.min(cup.bobVelocity, -520);
+    cup.shake = Math.min(1, cup.shake + 0.68);
 
     for (const g of gummies) {
       if (!g.inCup) continue;
@@ -359,14 +361,29 @@
       const half = Math.max(40, halfWidthAt(local.y));
       const side = clamp(local.x / half, -1, 1);
       const depth = clamp(local.y / cup.height, 0, 1);
-      const lift = 54 + 38 * depth;
-      const swirl = cup.mixDirection * (46 + 18 * (1 - depth)) - side * 34;
+      const lift = 92 + 64 * depth;
+      const swirl = cup.mixDirection * (96 + 42 * (1 - depth)) - side * 72;
 
       g.vy -= lift;
       g.vx += swirl;
-      g.spinSpeed += cup.mixDirection * (0.5 + Math.abs(side) * 0.4);
-      g.squish = Math.max(g.squish, 0.2);
+      g.spinSpeed += cup.mixDirection * (1.05 + Math.abs(side) * 0.85);
+      g.squish = Math.max(g.squish, 0.32);
     }
+  }
+
+  function applyMixingForce(g, dt) {
+    const local = worldToCup(g.x, g.y);
+    const half = Math.max(40, halfWidthAt(local.y));
+    const side = clamp(local.x / half, -1, 1);
+    const depth = clamp(local.y / cup.height, 0, 1);
+    const energy = cup.mixEnergy;
+    const swirl = (cup.mixDirection * (720 + 240 * (1 - depth)) - side * 430) * energy;
+    const lift = (520 + 280 * depth) * energy;
+
+    g.vx += swirl * dt;
+    g.vy -= lift * dt;
+    g.spinSpeed += cup.mixDirection * (2.6 + Math.abs(side) * 1.4) * energy * dt;
+    g.squish = Math.max(g.squish, 0.16 * energy);
   }
 
   function updateCupContainment(g, now) {
@@ -643,7 +660,8 @@
 
     const damping = Math.max(0.45, 1 - 0.26 * strength);
     g.vy *= damping;
-    g.vy = Math.max(g.vy, -MAX_UPWARD_SPEED);
+    const maxUpwardSpeed = MAX_UPWARD_SPEED + cup.mixEnergy * 90;
+    g.vy = Math.max(g.vy, -maxUpwardSpeed);
   }
 
   function shouldLeaveCup(g, local, now) {
@@ -720,7 +738,7 @@
   }
 
   function findTouchGroups() {
-    return [...findTouchGroupsBy("color"), ...findTouchGroupsBy("shape")];
+    return findTouchGroupsBy("color");
   }
 
   function findTouchGroupsBy(propertyName) {
