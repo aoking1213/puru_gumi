@@ -691,14 +691,16 @@
     let scoreAdded = 0;
 
     for (const group of groups) {
+      let removedInGroup = 0;
       for (const index of group) {
         if (removed.has(index)) continue;
         const g = gummies[index];
         removed.add(index);
+        removedInGroup += 1;
         scoreAdded += 110;
         splashAt(g.x, g.y, g.color, 14);
       }
-      scoreAdded += Math.max(0, group.length - 4) * 55;
+      scoreAdded += Math.max(0, removedInGroup - 4) * 55;
     }
 
     for (let i = gummies.length - 1; i >= 0; i -= 1) {
@@ -718,13 +720,18 @@
   }
 
   function findTouchGroups() {
+    return [...findTouchGroupsBy("color"), ...findTouchGroupsBy("shape")];
+  }
+
+  function findTouchGroupsBy(propertyName) {
     const visited = new Set();
     const groups = [];
 
     for (let i = 0; i < gummies.length; i += 1) {
       if (!gummies[i].inCup) continue;
       if (visited.has(i)) continue;
-      const color = gummies[i].color;
+      const matchValue = gummies[i][propertyName];
+      if (matchValue == null) continue;
       const stack = [i];
       const group = [];
       visited.add(i);
@@ -735,7 +742,7 @@
         group.push(currentIndex);
 
         for (let j = 0; j < gummies.length; j += 1) {
-          if (!gummies[j].inCup || visited.has(j) || gummies[j].color !== color) continue;
+          if (!gummies[j].inCup || visited.has(j) || gummies[j][propertyName] !== matchValue) continue;
           if (!areTouching(current, gummies[j])) continue;
           visited.add(j);
           stack.push(j);
