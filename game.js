@@ -1043,33 +1043,33 @@
 
   function gummyShapePath(shape, r, t, seed) {
     if (shape === "rounded-square") {
-      roundRect(-r * 0.82, -r * 0.82, r * 1.64, r * 1.64, r * 0.3);
+      roundRect(-r * 0.82, -r * 0.82, r * 1.64, r * 1.64, r * 0.44);
     } else if (shape === "rounded-triangle") {
       const nudge = Math.sin(t * 5 + seed) * r * 0.03;
       roundedPolygonPath(
         [
-          { x: 0, y: -r * 1.02 - nudge },
-          { x: r * 0.96, y: r * 0.72 },
-          { x: -r * 0.96, y: r * 0.72 + nudge }
+          { x: 0, y: -r * 0.96 - nudge },
+          { x: r * 0.9, y: r * 0.68 },
+          { x: -r * 0.9, y: r * 0.68 + nudge }
         ],
-        r * 0.24
+        r * 0.38
       );
     } else if (shape === "rounded-star") {
-      roundedPolygonPath(starPoints(r, t, seed), r * 0.13);
+      roundedPolygonPath(starPoints(r, t, seed), r * 0.24);
     } else if (shape === "capsule") {
       roundRect(-r * 1.08, -r * 0.54, r * 2.16, r * 1.08, r * 0.54);
     } else if (shape === "rounded-diamond") {
       roundedPolygonPath(
         [
-          { x: 0, y: -r * 1.02 },
-          { x: r * 0.98, y: 0 },
-          { x: 0, y: r * 1.02 },
-          { x: -r * 0.98, y: 0 }
+          { x: 0, y: -r * 0.96 },
+          { x: r * 0.94, y: 0 },
+          { x: 0, y: r * 0.96 },
+          { x: -r * 0.94, y: 0 }
         ],
-        r * 0.22
+        r * 0.36
       );
     } else if (shape === "rounded-rectangle") {
-      roundRect(-r * 1.08, -r * 0.68, r * 2.16, r * 1.36, r * 0.28);
+      roundRect(-r * 1.08, -r * 0.68, r * 2.16, r * 1.36, r * 0.44);
     } else {
       blobPath(r, t, seed);
     }
@@ -1091,7 +1091,7 @@
     const points = [];
     const wobble = Math.sin(t * 4 + seed) * r * 0.025;
     for (let i = 0; i < 10; i += 1) {
-      const radius = i % 2 === 0 ? r * 1.03 + wobble : r * 0.55 - wobble * 0.35;
+      const radius = i % 2 === 0 ? r * 0.96 + wobble : r * 0.68 - wobble * 0.2;
       const angle = -Math.PI / 2 + (i * Math.PI) / 5;
       points.push({
         x: Math.cos(angle) * radius,
@@ -1110,7 +1110,7 @@
       const next = points[(i + 1) % points.length];
       const prevLen = Math.hypot(prev.x - point.x, prev.y - point.y) || 1;
       const nextLen = Math.hypot(next.x - point.x, next.y - point.y) || 1;
-      const offset = Math.min(cornerRadius, prevLen * 0.42, nextLen * 0.42);
+      const offset = Math.min(cornerRadius, prevLen * 0.49, nextLen * 0.49);
       const from = {
         x: point.x + ((prev.x - point.x) / prevLen) * offset,
         y: point.y + ((prev.y - point.y) / prevLen) * offset
