@@ -44,6 +44,15 @@
     { base: "#af79ff", light: "#dbc8ff", dark: "#7045c2" },
     { base: "#ff79bd", light: "#ffc2df", dark: "#c53b83" }
   ];
+  const gummyShapes = [
+    "blob",
+    "rounded-square",
+    "rounded-triangle",
+    "rounded-star",
+    "capsule",
+    "rounded-diamond",
+    "rounded-rectangle"
+  ];
 
   const cup = {
     topWidth: 270,
@@ -99,6 +108,10 @@
     return Math.floor(Math.random() * colors.length);
   }
 
+  function randomShape() {
+    return gummyShapes[Math.floor(Math.random() * gummyShapes.length)];
+  }
+
   function resetGame() {
     gummies.length = 0;
     particles.length = 0;
@@ -139,6 +152,7 @@
       vy: 0,
       r: spec.r,
       isGiant: spec.isGiant,
+      shape: spec.shape,
       spin: -0.25 + Math.random() * 0.5,
       rotation: -0.2 + Math.random() * 0.4
     };
@@ -151,6 +165,7 @@
     return {
       color: randomColor(),
       isGiant,
+      shape: randomShape(),
       r: baseRadius * (isGiant ? GIANT_RADIUS_MULTIPLIER : 1)
     };
   }
@@ -263,6 +278,7 @@
       vy: falling.vy * 0.42,
       r: falling.r,
       isGiant: falling.isGiant,
+      shape: falling.shape,
       spin: falling.rotation,
       spinSpeed: falling.spin,
       caughtAt: now,
@@ -867,8 +883,8 @@
     ctx.fillStyle = "rgba(38, 50, 58, 0.62)";
     ctx.font = "800 13px system-ui, sans-serif";
     ctx.fillText("NEXT", W - 98, 29);
-    const preview = nextGummy || { color: 0, isGiant: false };
-    drawGummy(W - 70, 62, preview.isGiant ? 28 : 20, preview.color, 0, 8, 0.05, 1);
+    const preview = nextGummy || { color: 0, isGiant: false, shape: "blob" };
+    drawGummy(W - 70, 62, preview.isGiant ? 28 : 20, preview.color, 0, 8, 0.05, 1, preview.shape);
     ctx.restore();
   }
 
@@ -963,7 +979,7 @@
     for (const g of gummies) {
       const speed = Math.hypot(g.vx, g.vy);
       const pop = 1 + Math.min(0.2, speed / 1200) + g.squish * 0.7;
-      drawGummy(g.x, g.y, g.r, g.color, t, g.seed, g.spin, pop);
+      drawGummy(g.x, g.y, g.r, g.color, t, g.seed, g.spin, pop, g.shape);
     }
   }
 
@@ -977,11 +993,12 @@
       t,
       falling.seed,
       falling.rotation,
-      1.04
+      1.04,
+      falling.shape
     );
   }
 
-  function drawGummy(x, y, r, colorIndex, t, seed, rotation = 0, pop = 1) {
+  function drawGummy(x, y, r, colorIndex, t, seed, rotation = 0, pop = 1, shape = "blob") {
     const palette = colors[colorIndex];
     const wobble = Math.sin(t * 10 + seed) * 0.055 + Math.sin(t * 17 + seed * 0.41) * 0.025;
     const sx = pop * (1 + wobble);
@@ -1002,13 +1019,13 @@
     gradient.addColorStop(1, palette.dark);
 
     ctx.fillStyle = gradient;
-    blobPath(r, t, seed);
+    gummyShapePath(shape, r, t, seed);
     ctx.fill();
 
     ctx.shadowColor = "transparent";
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = "rgba(255, 255, 255, 0.48)";
-    blobPath(r * 0.94, t + 0.2, seed + 1.7);
+    gummyShapePath(shape, r * 0.94, t + 0.2, seed + 1.7);
     ctx.stroke();
 
     ctx.globalAlpha = 0.74;
@@ -1024,6 +1041,40 @@
     ctx.restore();
   }
 
+  function gummyShapePath(shape, r, t, seed) {
+    if (shape === "rounded-square") {
+      roundRect(-r * 0.82, -r * 0.82, r * 1.64, r * 1.64, r * 0.3);
+    } else if (shape === "rounded-triangle") {
+      const nudge = Math.sin(t * 5 + seed) * r * 0.03;
+      roundedPolygonPath(
+        [
+          { x: 0, y: -r * 1.02 - nudge },
+          { x: r * 0.96, y: r * 0.72 },
+          { x: -r * 0.96, y: r * 0.72 + nudge }
+        ],
+        r * 0.24
+      );
+    } else if (shape === "rounded-star") {
+      roundedPolygonPath(starPoints(r, t, seed), r * 0.13);
+    } else if (shape === "capsule") {
+      roundRect(-r * 1.08, -r * 0.54, r * 2.16, r * 1.08, r * 0.54);
+    } else if (shape === "rounded-diamond") {
+      roundedPolygonPath(
+        [
+          { x: 0, y: -r * 1.02 },
+          { x: r * 0.98, y: 0 },
+          { x: 0, y: r * 1.02 },
+          { x: -r * 0.98, y: 0 }
+        ],
+        r * 0.22
+      );
+    } else if (shape === "rounded-rectangle") {
+      roundRect(-r * 1.08, -r * 0.68, r * 2.16, r * 1.36, r * 0.28);
+    } else {
+      blobPath(r, t, seed);
+    }
+  }
+
   function blobPath(r, t, seed) {
     const a = Math.sin(t * 9 + seed) * r * 0.025;
     const b = Math.cos(t * 7 + seed * 0.7) * r * 0.03;
@@ -1033,6 +1084,47 @@
     ctx.bezierCurveTo(r * 0.86 + b, r * 0.66, r * 0.34, r * 1.04 + a, -r * 0.24, r * 0.94);
     ctx.bezierCurveTo(-r * 0.84 - a, r * 0.84, -r * 1.08, r * 0.28 + b, -r * 0.98, -r * 0.24);
     ctx.bezierCurveTo(-r * 0.87, -r * 0.72, -r * 0.58, -r * 0.96, -r * 0.1, -r - a);
+    ctx.closePath();
+  }
+
+  function starPoints(r, t, seed) {
+    const points = [];
+    const wobble = Math.sin(t * 4 + seed) * r * 0.025;
+    for (let i = 0; i < 10; i += 1) {
+      const radius = i % 2 === 0 ? r * 1.03 + wobble : r * 0.55 - wobble * 0.35;
+      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+      points.push({
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius
+      });
+    }
+    return points;
+  }
+
+  function roundedPolygonPath(points, cornerRadius) {
+    ctx.beginPath();
+
+    for (let i = 0; i < points.length; i += 1) {
+      const prev = points[(i - 1 + points.length) % points.length];
+      const point = points[i];
+      const next = points[(i + 1) % points.length];
+      const prevLen = Math.hypot(prev.x - point.x, prev.y - point.y) || 1;
+      const nextLen = Math.hypot(next.x - point.x, next.y - point.y) || 1;
+      const offset = Math.min(cornerRadius, prevLen * 0.42, nextLen * 0.42);
+      const from = {
+        x: point.x + ((prev.x - point.x) / prevLen) * offset,
+        y: point.y + ((prev.y - point.y) / prevLen) * offset
+      };
+      const to = {
+        x: point.x + ((next.x - point.x) / nextLen) * offset,
+        y: point.y + ((next.y - point.y) / nextLen) * offset
+      };
+
+      if (i === 0) ctx.moveTo(from.x, from.y);
+      else ctx.lineTo(from.x, from.y);
+      ctx.quadraticCurveTo(point.x, point.y, to.x, to.y);
+    }
+
     ctx.closePath();
   }
 
@@ -1081,7 +1173,7 @@
     for (let i = 0; i < colors.length; i += 1) {
       const x = W / 2 - 168 + i * 48 + Math.sin(t * 2.2 + i) * 6;
       const y = 205 + Math.cos(t * 2.8 + i) * 7;
-      drawGummy(x, y, 17, i, t, i * 9.7, 0, 1);
+      drawGummy(x, y, 17, i, t, i * 9.7, 0, 1, gummyShapes[i % gummyShapes.length]);
     }
 
     ctx.textAlign = "center";
