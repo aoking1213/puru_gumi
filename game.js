@@ -8,26 +8,59 @@
   const pauseButton = document.getElementById("pauseButton");
   const restartButton = document.getElementById("restartButton");
 
-  const W = 900;
-  const H = 760;
+  const STAGE_CONFIGS = {
+    desktop: {
+      width: 900,
+      height: 760,
+      uiScale: 1,
+      objectScale: 1,
+      gummyRadius: 18,
+      gummyRadiusVariance: 2.4,
+      cupTopWidth: 270,
+      cupBottomWidth: 214,
+      cupHeight: 356,
+      cupY: 300,
+      cupMinVisible: 40,
+      cupSpeed: 650
+    },
+    mobile: {
+      width: 540,
+      height: 960,
+      uiScale: 1.22,
+      objectScale: 1.38,
+      gummyRadius: 26,
+      gummyRadiusVariance: 3.4,
+      cupTopWidth: 316,
+      cupBottomWidth: 248,
+      cupHeight: 430,
+      cupY: 492,
+      cupMinVisible: 46,
+      cupSpeed: 560
+    }
+  };
+  const MOBILE_STAGE_QUERY = "(max-width: 700px), (hover: none) and (pointer: coarse)";
+  let stageConfig = STAGE_CONFIGS.desktop;
+  let W = stageConfig.width;
+  let H = stageConfig.height;
   const GRAVITY = 760;
   const MAX_UPWARD_SPEED = 90;
   const ESCAPED_FLOAT_DURATION = 1800;
   const ESCAPED_FLOAT_GRAVITY = 360;
   const ESCAPED_FLOAT_MAX_FALL_SPEED = 120;
   const ESCAPED_LATE_MAX_FALL_SPEED = 170;
-  const CUP_MIX_COOLDOWN = 260;
-  const CUP_MIX_BOB_LIMIT = 24;
-  const CUP_MIX_BOB_STIFFNESS = 92;
-  const CUP_MIX_BOB_DAMPING = 8.5;
+  const CUP_MIX_COOLDOWN = 320;
+  const CUP_MIX_BOB_LIMIT = 34;
+  const CUP_MIX_BOB_STIFFNESS = 78;
+  const CUP_MIX_BOB_DAMPING = 6.8;
+  const CUP_MIX_ENERGY_DECAY = 2.1;
   const FREE_GUMMY_GRAVITY = 680;
   const CUP_SIDE_BOUNCE_MARGIN = 8;
   const CUP_SIDE_BOUNCE_COOLDOWN = 85;
   const CUP_SIDE_BOUNCE_MAX_SPEED = 360;
   const STAGE_WALL_BOUNCE = 0.86;
   const WALL_UPWARD_WINDOW = 900;
-  const NORMAL_GUMMY_RADIUS = 18;
-  const NORMAL_GUMMY_RADIUS_VARIANCE = 2.4;
+  let normalGummyRadius = stageConfig.gummyRadius;
+  let normalGummyRadiusVariance = stageConfig.gummyRadiusVariance;
   const GIANT_START_LEVEL = 5;
   const GIANT_START_CHANCE = 1 / 20;
   const GIANT_MAX_CHANCE = 1 / 4;
@@ -44,17 +77,26 @@
     { base: "#af79ff", light: "#dbc8ff", dark: "#7045c2" },
     { base: "#ff79bd", light: "#ffc2df", dark: "#c53b83" }
   ];
+  const gummyShapes = [
+    "blob",
+    "rounded-square",
+    "rounded-triangle",
+    "rounded-star",
+    "capsule",
+    "rounded-diamond",
+    "rounded-rectangle"
+  ];
 
   const cup = {
-    topWidth: 270,
-    bottomWidth: 214,
-    height: 356,
+    topWidth: stageConfig.cupTopWidth,
+    bottomWidth: stageConfig.cupBottomWidth,
+    height: stageConfig.cupHeight,
     x: 0,
-    y: 300,
+    y: stageConfig.cupY,
     minX: 0,
     maxX: 0,
-    minVisible: 40,
-    speed: 650,
+    minVisible: stageConfig.cupMinVisible,
+    speed: stageConfig.cupSpeed,
     vx: 0,
     accel: 0,
     tilt: 0,
@@ -70,6 +112,16 @@
   cup.maxX = W - cup.minVisible;
 
   const keys = { left: false, right: false };
+  const pointerControl = {
+    tracking: false,
+    dragging: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    grabOffsetX: 0,
+    targetX: 0,
+    moved: false
+  };
   const gummies = [];
   const particles = [];
   const scoreBursts = [];
@@ -86,20 +138,53 @@
   let nextId = 1;
   let matchClock = 0;
 
+  function preferredStageConfig() {
+    return window.matchMedia(MOBILE_STAGE_QUERY).matches ? STAGE_CONFIGS.mobile : STAGE_CONFIGS.desktop;
+  }
+
+  function applyStageConfig(config) {
+    stageConfig = config;
+    W = config.width;
+    H = config.height;
+    normalGummyRadius = config.gummyRadius;
+    normalGummyRadiusVariance = config.gummyRadiusVariance;
+    cup.topWidth = config.cupTopWidth;
+    cup.bottomWidth = config.cupBottomWidth;
+    cup.height = config.cupHeight;
+    cup.y = config.cupY;
+    cup.minVisible = config.cupMinVisible;
+    cup.speed = config.cupSpeed;
+    cup.minX = -cup.topWidth + cup.minVisible;
+    cup.maxX = W - cup.minVisible;
+    cup.x = clamp(cup.x, cup.minX, cup.maxX);
+  }
+
   function initCanvas() {
+    const nextStageConfig = preferredStageConfig();
+    const stageChanged = stageConfig !== nextStageConfig;
+    if (stageChanged) applyStageConfig(nextStageConfig);
+
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     canvas.style.width = "100%";
     canvas.style.height = "auto";
+    canvas.style.aspectRatio = `${W} / ${H}`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (stageChanged && falling) resetGame();
   }
 
   function randomColor() {
     return Math.floor(Math.random() * colors.length);
   }
 
+  function randomShape() {
+    return gummyShapes[Math.floor(Math.random() * gummyShapes.length)];
+  }
+
   function resetGame() {
+    clearPointerControl();
     gummies.length = 0;
     particles.length = 0;
     scoreBursts.length = 0;
@@ -139,6 +224,7 @@
       vy: 0,
       r: spec.r,
       isGiant: spec.isGiant,
+      shape: spec.shape,
       spin: -0.25 + Math.random() * 0.5,
       rotation: -0.2 + Math.random() * 0.4
     };
@@ -147,10 +233,11 @@
 
   function createGummySpec() {
     const isGiant = Math.random() < giantChanceForLevel(level);
-    const baseRadius = NORMAL_GUMMY_RADIUS + Math.random() * NORMAL_GUMMY_RADIUS_VARIANCE;
+    const baseRadius = normalGummyRadius + Math.random() * normalGummyRadiusVariance;
     return {
       color: randomColor(),
       isGiant,
+      shape: randomShape(),
       r: baseRadius * (isGiant ? GIANT_RADIUS_MULTIPLIER : 1)
     };
   }
@@ -204,7 +291,11 @@
     const oldX = cup.x;
     const direction = Number(keys.right) - Number(keys.left);
 
-    cup.x += direction * cup.speed * dt;
+    if (pointerControl.dragging) {
+      cup.x = pointerControl.targetX;
+    } else {
+      cup.x += direction * cup.speed * dt;
+    }
     cup.x = clamp(cup.x, cup.minX, cup.maxX);
     cup.vx = dt > 0 ? (cup.x - oldX) / dt : 0;
     cup.accel = dt > 0 ? (cup.vx - oldVx) / dt : 0;
@@ -213,7 +304,7 @@
     cup.tilt += (targetTilt - cup.tilt) * Math.min(1, dt * 9);
     cup.shake = Math.max(0, cup.shake - dt * 2.6);
     cup.mixCooldown = Math.max(0, cup.mixCooldown - dt * 1000);
-    cup.mixEnergy = Math.max(0, cup.mixEnergy - dt * 3.2);
+    cup.mixEnergy = Math.max(0, cup.mixEnergy - dt * CUP_MIX_ENERGY_DECAY);
     cup.bobVelocity += -cup.bob * CUP_MIX_BOB_STIFFNESS * dt;
     cup.bobVelocity *= Math.max(0, 1 - CUP_MIX_BOB_DAMPING * dt);
     cup.bob = clamp(cup.bob + cup.bobVelocity * dt, -CUP_MIX_BOB_LIMIT, CUP_MIX_BOB_LIMIT);
@@ -263,6 +354,7 @@
       vy: falling.vy * 0.42,
       r: falling.r,
       isGiant: falling.isGiant,
+      shape: falling.shape,
       spin: falling.rotation,
       spinSpeed: falling.spin,
       caughtAt: now,
@@ -287,6 +379,7 @@
         const escaped = isEscapedGummy(g);
         if (g.inCup) {
           g.vx += -cup.accel * 0.18 * step;
+          if (cup.mixEnergy > 0) applyMixingForce(g, step);
         }
         g.vy += gravityForGummy(g, now) * step;
         g.vx *= escaped ? 0.988 : 0.996;
@@ -333,8 +426,8 @@
     cup.mixCooldown = CUP_MIX_COOLDOWN;
     cup.mixEnergy = 1;
     cup.mixDirection *= -1;
-    cup.bobVelocity = Math.min(cup.bobVelocity, -310);
-    cup.shake = Math.min(1, cup.shake + 0.42);
+    cup.bobVelocity = Math.min(cup.bobVelocity, -520);
+    cup.shake = Math.min(1, cup.shake + 0.68);
 
     for (const g of gummies) {
       if (!g.inCup) continue;
@@ -343,14 +436,29 @@
       const half = Math.max(40, halfWidthAt(local.y));
       const side = clamp(local.x / half, -1, 1);
       const depth = clamp(local.y / cup.height, 0, 1);
-      const lift = 54 + 38 * depth;
-      const swirl = cup.mixDirection * (46 + 18 * (1 - depth)) - side * 34;
+      const lift = 92 + 64 * depth;
+      const swirl = cup.mixDirection * (96 + 42 * (1 - depth)) - side * 72;
 
       g.vy -= lift;
       g.vx += swirl;
-      g.spinSpeed += cup.mixDirection * (0.5 + Math.abs(side) * 0.4);
-      g.squish = Math.max(g.squish, 0.2);
+      g.spinSpeed += cup.mixDirection * (1.05 + Math.abs(side) * 0.85);
+      g.squish = Math.max(g.squish, 0.32);
     }
+  }
+
+  function applyMixingForce(g, dt) {
+    const local = worldToCup(g.x, g.y);
+    const half = Math.max(40, halfWidthAt(local.y));
+    const side = clamp(local.x / half, -1, 1);
+    const depth = clamp(local.y / cup.height, 0, 1);
+    const energy = cup.mixEnergy;
+    const swirl = (cup.mixDirection * (720 + 240 * (1 - depth)) - side * 430) * energy;
+    const lift = (520 + 280 * depth) * energy;
+
+    g.vx += swirl * dt;
+    g.vy -= lift * dt;
+    g.spinSpeed += cup.mixDirection * (2.6 + Math.abs(side) * 1.4) * energy * dt;
+    g.squish = Math.max(g.squish, 0.16 * energy);
   }
 
   function updateCupContainment(g, now) {
@@ -627,7 +735,8 @@
 
     const damping = Math.max(0.45, 1 - 0.26 * strength);
     g.vy *= damping;
-    g.vy = Math.max(g.vy, -MAX_UPWARD_SPEED);
+    const maxUpwardSpeed = MAX_UPWARD_SPEED + cup.mixEnergy * 90;
+    g.vy = Math.max(g.vy, -maxUpwardSpeed);
   }
 
   function shouldLeaveCup(g, local, now) {
@@ -675,14 +784,16 @@
     let scoreAdded = 0;
 
     for (const group of groups) {
+      let removedInGroup = 0;
       for (const index of group) {
         if (removed.has(index)) continue;
         const g = gummies[index];
         removed.add(index);
+        removedInGroup += 1;
         scoreAdded += 110;
         splashAt(g.x, g.y, g.color, 14);
       }
-      scoreAdded += Math.max(0, group.length - 4) * 55;
+      scoreAdded += Math.max(0, removedInGroup - 4) * 55;
     }
 
     for (let i = gummies.length - 1; i >= 0; i -= 1) {
@@ -702,13 +813,18 @@
   }
 
   function findTouchGroups() {
+    return findTouchGroupsBy("color");
+  }
+
+  function findTouchGroupsBy(propertyName) {
     const visited = new Set();
     const groups = [];
 
     for (let i = 0; i < gummies.length; i += 1) {
       if (!gummies[i].inCup) continue;
       if (visited.has(i)) continue;
-      const color = gummies[i].color;
+      const matchValue = gummies[i][propertyName];
+      if (matchValue == null) continue;
       const stack = [i];
       const group = [];
       visited.add(i);
@@ -719,7 +835,7 @@
         group.push(currentIndex);
 
         for (let j = 0; j < gummies.length; j += 1) {
-          if (!gummies[j].inCup || visited.has(j) || gummies[j].color !== color) continue;
+          if (!gummies[j].inCup || visited.has(j) || gummies[j][propertyName] !== matchValue) continue;
           if (!areTouching(current, gummies[j])) continue;
           visited.add(j);
           stack.push(j);
@@ -782,7 +898,7 @@
         y,
         vx: Math.cos(a) * speed,
         vy: Math.sin(a) * speed - 68,
-        r: 3 + Math.random() * 5,
+        r: stageObjectSize(3 + Math.random() * 5),
         age: 0,
         life: 0.45 + Math.random() * 0.45,
         color: palette.base,
@@ -807,6 +923,14 @@
     drawScoreBursts();
     if (state === "paused") drawPaused();
     if (state === "over") drawGameOver(t);
+  }
+
+  function stageFont(weight, size) {
+    return `${weight} ${Math.round(size * stageConfig.uiScale)}px system-ui, sans-serif`;
+  }
+
+  function stageObjectSize(size) {
+    return size * stageConfig.objectScale;
   }
 
   function drawBackground(t) {
@@ -840,20 +964,20 @@
     ctx.stroke();
 
     ctx.fillStyle = "#26323a";
-    ctx.font = "800 15px system-ui, sans-serif";
+    ctx.font = stageFont(800, 15);
     ctx.textBaseline = "top";
     ctx.fillText("ぷるぷるグミカップ", 42, 30);
-    ctx.font = "800 24px system-ui, sans-serif";
+    ctx.font = stageFont(800, 24);
     ctx.fillText(String(score).padStart(5, "0"), 42, 54);
 
-    ctx.font = "700 13px system-ui, sans-serif";
+    ctx.font = stageFont(700, 13);
     ctx.fillStyle = "rgba(38, 50, 58, 0.66)";
     ctx.fillText(`LV ${level}`, 184, 56);
     ctx.fillText(`BEST ${String(highScore).padStart(5, "0")}`, 42, 94);
 
     if (chainText) {
       ctx.fillStyle = "#f65368";
-      ctx.font = "900 16px system-ui, sans-serif";
+      ctx.font = stageFont(900, 16);
       ctx.textAlign = "right";
       ctx.fillText(chainText, W - 36, 95);
     }
@@ -865,10 +989,20 @@
     ctx.strokeStyle = "rgba(38, 50, 58, 0.12)";
     ctx.stroke();
     ctx.fillStyle = "rgba(38, 50, 58, 0.62)";
-    ctx.font = "800 13px system-ui, sans-serif";
+    ctx.font = stageFont(800, 13);
     ctx.fillText("NEXT", W - 98, 29);
-    const preview = nextGummy || { color: 0, isGiant: false };
-    drawGummy(W - 70, 62, preview.isGiant ? 28 : 20, preview.color, 0, 8, 0.05, 1);
+    const preview = nextGummy || { color: 0, isGiant: false, shape: "blob" };
+    drawGummy(
+      W - 70,
+      62,
+      stageObjectSize(preview.isGiant ? 28 : 20),
+      preview.color,
+      0,
+      8,
+      0.05,
+      1,
+      preview.shape
+    );
     ctx.restore();
   }
 
@@ -963,7 +1097,7 @@
     for (const g of gummies) {
       const speed = Math.hypot(g.vx, g.vy);
       const pop = 1 + Math.min(0.2, speed / 1200) + g.squish * 0.7;
-      drawGummy(g.x, g.y, g.r, g.color, t, g.seed, g.spin, pop);
+      drawGummy(g.x, g.y, g.r, g.color, t, g.seed, g.spin, pop, g.shape);
     }
   }
 
@@ -977,11 +1111,12 @@
       t,
       falling.seed,
       falling.rotation,
-      1.04
+      1.04,
+      falling.shape
     );
   }
 
-  function drawGummy(x, y, r, colorIndex, t, seed, rotation = 0, pop = 1) {
+  function drawGummy(x, y, r, colorIndex, t, seed, rotation = 0, pop = 1, shape = "blob") {
     const palette = colors[colorIndex];
     const wobble = Math.sin(t * 10 + seed) * 0.055 + Math.sin(t * 17 + seed * 0.41) * 0.025;
     const sx = pop * (1 + wobble);
@@ -1002,13 +1137,13 @@
     gradient.addColorStop(1, palette.dark);
 
     ctx.fillStyle = gradient;
-    blobPath(r, t, seed);
+    gummyShapePath(shape, r, t, seed);
     ctx.fill();
 
     ctx.shadowColor = "transparent";
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = "rgba(255, 255, 255, 0.48)";
-    blobPath(r * 0.94, t + 0.2, seed + 1.7);
+    gummyShapePath(shape, r * 0.94, t + 0.2, seed + 1.7);
     ctx.stroke();
 
     ctx.globalAlpha = 0.74;
@@ -1024,6 +1159,40 @@
     ctx.restore();
   }
 
+  function gummyShapePath(shape, r, t, seed) {
+    if (shape === "rounded-square") {
+      roundRect(-r * 0.82, -r * 0.82, r * 1.64, r * 1.64, r * 0.44);
+    } else if (shape === "rounded-triangle") {
+      const nudge = Math.sin(t * 5 + seed) * r * 0.03;
+      roundedPolygonPath(
+        [
+          { x: 0, y: -r * 0.96 - nudge },
+          { x: r * 0.9, y: r * 0.68 },
+          { x: -r * 0.9, y: r * 0.68 + nudge }
+        ],
+        r * 0.38
+      );
+    } else if (shape === "rounded-star") {
+      roundedPolygonPath(starPoints(r, t, seed), r * 0.24);
+    } else if (shape === "capsule") {
+      roundRect(-r * 1.08, -r * 0.54, r * 2.16, r * 1.08, r * 0.54);
+    } else if (shape === "rounded-diamond") {
+      roundedPolygonPath(
+        [
+          { x: 0, y: -r * 0.96 },
+          { x: r * 0.94, y: 0 },
+          { x: 0, y: r * 0.96 },
+          { x: -r * 0.94, y: 0 }
+        ],
+        r * 0.36
+      );
+    } else if (shape === "rounded-rectangle") {
+      roundRect(-r * 1.08, -r * 0.68, r * 2.16, r * 1.36, r * 0.44);
+    } else {
+      blobPath(r, t, seed);
+    }
+  }
+
   function blobPath(r, t, seed) {
     const a = Math.sin(t * 9 + seed) * r * 0.025;
     const b = Math.cos(t * 7 + seed * 0.7) * r * 0.03;
@@ -1033,6 +1202,47 @@
     ctx.bezierCurveTo(r * 0.86 + b, r * 0.66, r * 0.34, r * 1.04 + a, -r * 0.24, r * 0.94);
     ctx.bezierCurveTo(-r * 0.84 - a, r * 0.84, -r * 1.08, r * 0.28 + b, -r * 0.98, -r * 0.24);
     ctx.bezierCurveTo(-r * 0.87, -r * 0.72, -r * 0.58, -r * 0.96, -r * 0.1, -r - a);
+    ctx.closePath();
+  }
+
+  function starPoints(r, t, seed) {
+    const points = [];
+    const wobble = Math.sin(t * 4 + seed) * r * 0.025;
+    for (let i = 0; i < 10; i += 1) {
+      const radius = i % 2 === 0 ? r * 0.96 + wobble : r * 0.68 - wobble * 0.2;
+      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+      points.push({
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius
+      });
+    }
+    return points;
+  }
+
+  function roundedPolygonPath(points, cornerRadius) {
+    ctx.beginPath();
+
+    for (let i = 0; i < points.length; i += 1) {
+      const prev = points[(i - 1 + points.length) % points.length];
+      const point = points[i];
+      const next = points[(i + 1) % points.length];
+      const prevLen = Math.hypot(prev.x - point.x, prev.y - point.y) || 1;
+      const nextLen = Math.hypot(next.x - point.x, next.y - point.y) || 1;
+      const offset = Math.min(cornerRadius, prevLen * 0.49, nextLen * 0.49);
+      const from = {
+        x: point.x + ((prev.x - point.x) / prevLen) * offset,
+        y: point.y + ((prev.y - point.y) / prevLen) * offset
+      };
+      const to = {
+        x: point.x + ((next.x - point.x) / nextLen) * offset,
+        y: point.y + ((next.y - point.y) / nextLen) * offset
+      };
+
+      if (i === 0) ctx.moveTo(from.x, from.y);
+      else ctx.lineTo(from.x, from.y);
+      ctx.quadraticCurveTo(point.x, point.y, to.x, to.y);
+    }
+
     ctx.closePath();
   }
 
@@ -1064,7 +1274,7 @@
       const alpha = 1 - b.age / 0.9;
       ctx.globalAlpha = Math.max(0, alpha);
       ctx.fillStyle = b.color;
-      ctx.font = "900 26px system-ui, sans-serif";
+      ctx.font = stageFont(900, 26);
       ctx.lineWidth = 4;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
       ctx.strokeText(b.text, b.x, b.y);
@@ -1081,20 +1291,20 @@
     for (let i = 0; i < colors.length; i += 1) {
       const x = W / 2 - 168 + i * 48 + Math.sin(t * 2.2 + i) * 6;
       const y = 205 + Math.cos(t * 2.8 + i) * 7;
-      drawGummy(x, y, 17, i, t, i * 9.7, 0, 1);
+      drawGummy(x, y, stageObjectSize(17), i, t, i * 9.7, 0, 1, gummyShapes[i % gummyShapes.length]);
     }
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#26323a";
-    ctx.font = "900 46px system-ui, sans-serif";
+    ctx.font = stageFont(900, 46);
     ctx.fillText("GAME OVER", W / 2, 282);
-    ctx.font = "800 20px system-ui, sans-serif";
+    ctx.font = stageFont(800, 20);
     ctx.fillText(chainText || "FINISH", W / 2, 325);
 
-    ctx.font = "900 32px system-ui, sans-serif";
+    ctx.font = stageFont(900, 32);
     ctx.fillText(String(score).padStart(5, "0"), W / 2, 378);
-    ctx.font = "800 16px system-ui, sans-serif";
+    ctx.font = stageFont(800, 16);
     ctx.fillStyle = "rgba(38, 50, 58, 0.68)";
     ctx.fillText(`BEST ${String(highScore).padStart(5, "0")}`, W / 2, 416);
 
@@ -1102,7 +1312,7 @@
     roundRect(W / 2 - 82, 464, 164, 52, 8);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
-    ctx.font = "900 18px system-ui, sans-serif";
+    ctx.font = stageFont(900, 18);
     ctx.fillText("RESTART", W / 2, 490);
     ctx.restore();
   }
@@ -1114,7 +1324,7 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#26323a";
-    ctx.font = "900 44px system-ui, sans-serif";
+    ctx.font = stageFont(900, 44);
     ctx.fillText("PAUSE", W / 2, 342);
     ctx.restore();
   }
@@ -1229,6 +1439,7 @@
       state = "paused";
       keys.left = false;
       keys.right = false;
+      clearPointerControl();
       pauseButton.textContent = "▶";
       pauseButton.setAttribute("aria-label", "再開");
     } else if (state === "paused") {
@@ -1257,16 +1468,91 @@
     button.addEventListener("pointerleave", release);
   }
 
+  function clearPointerControl() {
+    pointerControl.tracking = false;
+    pointerControl.dragging = false;
+    pointerControl.pointerId = null;
+    pointerControl.moved = false;
+  }
+
+  function canvasPointFromEvent(event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * W,
+      y: ((event.clientY - rect.top) / rect.height) * H
+    };
+  }
+
+  function pointHitsCup(point) {
+    const local = worldToCup(point.x, point.y);
+    const localY = clamp(local.y, 0, cup.height);
+    const half = halfWidthAt(localY);
+    return local.y >= -54 && local.y <= cup.height + 64 && Math.abs(local.x) <= half + 56;
+  }
+
+  function setDragTarget(point) {
+    pointerControl.targetX = clamp(point.x - pointerControl.grabOffsetX, cup.minX, cup.maxX);
+  }
+
+  function releasePointerCapture(event) {
+    if (!canvas.hasPointerCapture || !canvas.hasPointerCapture(event.pointerId)) return;
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
   canvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    const point = canvasPointFromEvent(event);
+
     if (state === "over") {
-      const rect = canvas.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * W;
-      const y = ((event.clientY - rect.top) / rect.height) * H;
-      if (x >= W / 2 - 92 && x <= W / 2 + 92 && y >= 450 && y <= 530) {
+      if (point.x >= W / 2 - 92 && point.x <= W / 2 + 92 && point.y >= 450 && point.y <= 530) {
         resetGame();
       }
+      canvas.focus({ preventScroll: true });
+      return;
     }
+
     canvas.focus({ preventScroll: true });
+    if (state !== "playing") return;
+
+    pointerControl.tracking = true;
+    pointerControl.dragging = pointHitsCup(point);
+    pointerControl.pointerId = event.pointerId;
+    pointerControl.startX = point.x;
+    pointerControl.startY = point.y;
+    pointerControl.grabOffsetX = point.x - cup.x;
+    pointerControl.targetX = cup.x;
+    pointerControl.moved = false;
+
+    if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!pointerControl.tracking || event.pointerId !== pointerControl.pointerId) return;
+
+    event.preventDefault();
+    const point = canvasPointFromEvent(event);
+    const dx = point.x - pointerControl.startX;
+    const dy = point.y - pointerControl.startY;
+    if (dx * dx + dy * dy > 9 * 9) pointerControl.moved = true;
+    if (pointerControl.dragging && state === "playing") setDragTarget(point);
+  });
+
+  canvas.addEventListener("pointerup", (event) => {
+    if (!pointerControl.tracking || event.pointerId !== pointerControl.pointerId) return;
+
+    event.preventDefault();
+    const shouldStir = state === "playing" && !pointerControl.moved;
+    releasePointerCapture(event);
+    clearPointerControl();
+    if (shouldStir) stirCup(performance.now());
+  });
+
+  canvas.addEventListener("pointercancel", (event) => {
+    if (!pointerControl.tracking || event.pointerId !== pointerControl.pointerId) return;
+
+    event.preventDefault();
+    releasePointerCapture(event);
+    clearPointerControl();
   });
 
   pauseButton.addEventListener("click", togglePause);
