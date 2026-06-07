@@ -1330,10 +1330,10 @@
   }
 
   function isTouchingCupTop(gummy, local) {
-    const rimHalf = cup.topWidth / 2 + 24;
-    const horizontalOverlap = local.x + gummy.r >= -rimHalf && local.x - gummy.r <= rimHalf;
-    const verticalOverlap = local.y + gummy.r >= -8 && local.y - gummy.r <= 14;
-    return horizontalOverlap && verticalOverlap;
+    const mouthHalf = cup.topWidth / 2 - gummy.r * 0.45;
+    const centerOverMouth = Math.abs(local.x) <= mouthHalf;
+    const touchesTopSurface = local.y + gummy.r >= -8 && local.y <= gummy.r * 0.45;
+    return centerOverMouth && touchesTopSurface;
   }
 
   function cupCenterX() {
