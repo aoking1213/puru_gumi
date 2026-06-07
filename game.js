@@ -8,8 +8,40 @@
   const pauseButton = document.getElementById("pauseButton");
   const restartButton = document.getElementById("restartButton");
 
-  const W = 900;
-  const H = 760;
+  const STAGE_CONFIGS = {
+    desktop: {
+      width: 900,
+      height: 760,
+      uiScale: 1,
+      objectScale: 1,
+      gummyRadius: 18,
+      gummyRadiusVariance: 2.4,
+      cupTopWidth: 270,
+      cupBottomWidth: 214,
+      cupHeight: 356,
+      cupY: 300,
+      cupMinVisible: 40,
+      cupSpeed: 650
+    },
+    mobile: {
+      width: 540,
+      height: 960,
+      uiScale: 1.22,
+      objectScale: 1.38,
+      gummyRadius: 26,
+      gummyRadiusVariance: 3.4,
+      cupTopWidth: 316,
+      cupBottomWidth: 248,
+      cupHeight: 430,
+      cupY: 492,
+      cupMinVisible: 46,
+      cupSpeed: 560
+    }
+  };
+  const MOBILE_STAGE_QUERY = "(max-width: 700px), (hover: none) and (pointer: coarse)";
+  let stageConfig = STAGE_CONFIGS.desktop;
+  let W = stageConfig.width;
+  let H = stageConfig.height;
   const GRAVITY = 760;
   const MAX_UPWARD_SPEED = 90;
   const ESCAPED_FLOAT_DURATION = 1800;
@@ -27,8 +59,8 @@
   const CUP_SIDE_BOUNCE_MAX_SPEED = 360;
   const STAGE_WALL_BOUNCE = 0.86;
   const WALL_UPWARD_WINDOW = 900;
-  const NORMAL_GUMMY_RADIUS = 18;
-  const NORMAL_GUMMY_RADIUS_VARIANCE = 2.4;
+  let normalGummyRadius = stageConfig.gummyRadius;
+  let normalGummyRadiusVariance = stageConfig.gummyRadiusVariance;
   const GIANT_START_LEVEL = 5;
   const GIANT_START_CHANCE = 1 / 20;
   const GIANT_MAX_CHANCE = 1 / 4;
@@ -56,15 +88,15 @@
   ];
 
   const cup = {
-    topWidth: 270,
-    bottomWidth: 214,
-    height: 356,
+    topWidth: stageConfig.cupTopWidth,
+    bottomWidth: stageConfig.cupBottomWidth,
+    height: stageConfig.cupHeight,
     x: 0,
-    y: 300,
+    y: stageConfig.cupY,
     minX: 0,
     maxX: 0,
-    minVisible: 40,
-    speed: 650,
+    minVisible: stageConfig.cupMinVisible,
+    speed: stageConfig.cupSpeed,
     vx: 0,
     accel: 0,
     tilt: 0,
@@ -106,13 +138,41 @@
   let nextId = 1;
   let matchClock = 0;
 
+  function preferredStageConfig() {
+    return window.matchMedia(MOBILE_STAGE_QUERY).matches ? STAGE_CONFIGS.mobile : STAGE_CONFIGS.desktop;
+  }
+
+  function applyStageConfig(config) {
+    stageConfig = config;
+    W = config.width;
+    H = config.height;
+    normalGummyRadius = config.gummyRadius;
+    normalGummyRadiusVariance = config.gummyRadiusVariance;
+    cup.topWidth = config.cupTopWidth;
+    cup.bottomWidth = config.cupBottomWidth;
+    cup.height = config.cupHeight;
+    cup.y = config.cupY;
+    cup.minVisible = config.cupMinVisible;
+    cup.speed = config.cupSpeed;
+    cup.minX = -cup.topWidth + cup.minVisible;
+    cup.maxX = W - cup.minVisible;
+    cup.x = clamp(cup.x, cup.minX, cup.maxX);
+  }
+
   function initCanvas() {
+    const nextStageConfig = preferredStageConfig();
+    const stageChanged = stageConfig !== nextStageConfig;
+    if (stageChanged) applyStageConfig(nextStageConfig);
+
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     canvas.style.width = "100%";
     canvas.style.height = "auto";
+    canvas.style.aspectRatio = `${W} / ${H}`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (stageChanged && falling) resetGame();
   }
 
   function randomColor() {
@@ -173,7 +233,7 @@
 
   function createGummySpec() {
     const isGiant = Math.random() < giantChanceForLevel(level);
-    const baseRadius = NORMAL_GUMMY_RADIUS + Math.random() * NORMAL_GUMMY_RADIUS_VARIANCE;
+    const baseRadius = normalGummyRadius + Math.random() * normalGummyRadiusVariance;
     return {
       color: randomColor(),
       isGiant,
@@ -838,7 +898,7 @@
         y,
         vx: Math.cos(a) * speed,
         vy: Math.sin(a) * speed - 68,
-        r: 3 + Math.random() * 5,
+        r: stageObjectSize(3 + Math.random() * 5),
         age: 0,
         life: 0.45 + Math.random() * 0.45,
         color: palette.base,
@@ -863,6 +923,14 @@
     drawScoreBursts();
     if (state === "paused") drawPaused();
     if (state === "over") drawGameOver(t);
+  }
+
+  function stageFont(weight, size) {
+    return `${weight} ${Math.round(size * stageConfig.uiScale)}px system-ui, sans-serif`;
+  }
+
+  function stageObjectSize(size) {
+    return size * stageConfig.objectScale;
   }
 
   function drawBackground(t) {
@@ -896,20 +964,20 @@
     ctx.stroke();
 
     ctx.fillStyle = "#26323a";
-    ctx.font = "800 15px system-ui, sans-serif";
+    ctx.font = stageFont(800, 15);
     ctx.textBaseline = "top";
     ctx.fillText("ぷるぷるグミカップ", 42, 30);
-    ctx.font = "800 24px system-ui, sans-serif";
+    ctx.font = stageFont(800, 24);
     ctx.fillText(String(score).padStart(5, "0"), 42, 54);
 
-    ctx.font = "700 13px system-ui, sans-serif";
+    ctx.font = stageFont(700, 13);
     ctx.fillStyle = "rgba(38, 50, 58, 0.66)";
     ctx.fillText(`LV ${level}`, 184, 56);
     ctx.fillText(`BEST ${String(highScore).padStart(5, "0")}`, 42, 94);
 
     if (chainText) {
       ctx.fillStyle = "#f65368";
-      ctx.font = "900 16px system-ui, sans-serif";
+      ctx.font = stageFont(900, 16);
       ctx.textAlign = "right";
       ctx.fillText(chainText, W - 36, 95);
     }
@@ -921,10 +989,20 @@
     ctx.strokeStyle = "rgba(38, 50, 58, 0.12)";
     ctx.stroke();
     ctx.fillStyle = "rgba(38, 50, 58, 0.62)";
-    ctx.font = "800 13px system-ui, sans-serif";
+    ctx.font = stageFont(800, 13);
     ctx.fillText("NEXT", W - 98, 29);
     const preview = nextGummy || { color: 0, isGiant: false, shape: "blob" };
-    drawGummy(W - 70, 62, preview.isGiant ? 28 : 20, preview.color, 0, 8, 0.05, 1, preview.shape);
+    drawGummy(
+      W - 70,
+      62,
+      stageObjectSize(preview.isGiant ? 28 : 20),
+      preview.color,
+      0,
+      8,
+      0.05,
+      1,
+      preview.shape
+    );
     ctx.restore();
   }
 
@@ -1196,7 +1274,7 @@
       const alpha = 1 - b.age / 0.9;
       ctx.globalAlpha = Math.max(0, alpha);
       ctx.fillStyle = b.color;
-      ctx.font = "900 26px system-ui, sans-serif";
+      ctx.font = stageFont(900, 26);
       ctx.lineWidth = 4;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
       ctx.strokeText(b.text, b.x, b.y);
@@ -1213,20 +1291,20 @@
     for (let i = 0; i < colors.length; i += 1) {
       const x = W / 2 - 168 + i * 48 + Math.sin(t * 2.2 + i) * 6;
       const y = 205 + Math.cos(t * 2.8 + i) * 7;
-      drawGummy(x, y, 17, i, t, i * 9.7, 0, 1, gummyShapes[i % gummyShapes.length]);
+      drawGummy(x, y, stageObjectSize(17), i, t, i * 9.7, 0, 1, gummyShapes[i % gummyShapes.length]);
     }
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#26323a";
-    ctx.font = "900 46px system-ui, sans-serif";
+    ctx.font = stageFont(900, 46);
     ctx.fillText("GAME OVER", W / 2, 282);
-    ctx.font = "800 20px system-ui, sans-serif";
+    ctx.font = stageFont(800, 20);
     ctx.fillText(chainText || "FINISH", W / 2, 325);
 
-    ctx.font = "900 32px system-ui, sans-serif";
+    ctx.font = stageFont(900, 32);
     ctx.fillText(String(score).padStart(5, "0"), W / 2, 378);
-    ctx.font = "800 16px system-ui, sans-serif";
+    ctx.font = stageFont(800, 16);
     ctx.fillStyle = "rgba(38, 50, 58, 0.68)";
     ctx.fillText(`BEST ${String(highScore).padStart(5, "0")}`, W / 2, 416);
 
@@ -1234,7 +1312,7 @@
     roundRect(W / 2 - 82, 464, 164, 52, 8);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
-    ctx.font = "900 18px system-ui, sans-serif";
+    ctx.font = stageFont(900, 18);
     ctx.fillText("RESTART", W / 2, 490);
     ctx.restore();
   }
@@ -1246,7 +1324,7 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#26323a";
-    ctx.font = "900 44px system-ui, sans-serif";
+    ctx.font = stageFont(900, 44);
     ctx.fillText("PAUSE", W / 2, 342);
     ctx.restore();
   }

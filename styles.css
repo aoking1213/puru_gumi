@@ -45,7 +45,7 @@ canvas {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 900 / 760;
+  aspect-ratio: var(--stage-aspect, 900 / 760);
   border-radius: 6px;
   outline: none;
   touch-action: none;
@@ -129,13 +129,14 @@ canvas {
   .game-frame {
     align-self: center;
     justify-self: center;
-    width: min(100%, calc((100dvh - 78px) * 900 / 760));
+    width: min(100%, calc((100dvh - 78px) * 540 / 960));
     max-width: 100%;
     padding: 4px;
     box-shadow: 0 14px 36px rgba(68, 96, 102, 0.18);
   }
 
   canvas {
+    --stage-aspect: 540 / 960;
     max-height: calc(100dvh - 78px);
   }
 
