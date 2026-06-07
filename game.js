@@ -80,6 +80,16 @@
   cup.maxX = W - cup.minVisible;
 
   const keys = { left: false, right: false };
+  const pointerControl = {
+    tracking: false,
+    dragging: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    grabOffsetX: 0,
+    targetX: 0,
+    moved: false
+  };
   const gummies = [];
   const particles = [];
   const scoreBursts = [];
@@ -114,6 +124,7 @@
   }
 
   function resetGame() {
+    clearPointerControl();
     gummies.length = 0;
     particles.length = 0;
     scoreBursts.length = 0;
@@ -220,7 +231,11 @@
     const oldX = cup.x;
     const direction = Number(keys.right) - Number(keys.left);
 
-    cup.x += direction * cup.speed * dt;
+    if (pointerControl.dragging) {
+      cup.x = pointerControl.targetX;
+    } else {
+      cup.x += direction * cup.speed * dt;
+    }
     cup.x = clamp(cup.x, cup.minX, cup.maxX);
     cup.vx = dt > 0 ? (cup.x - oldX) / dt : 0;
     cup.accel = dt > 0 ? (cup.vx - oldVx) / dt : 0;
@@ -1346,6 +1361,7 @@
       state = "paused";
       keys.left = false;
       keys.right = false;
+      clearPointerControl();
       pauseButton.textContent = "▶";
       pauseButton.setAttribute("aria-label", "再開");
     } else if (state === "paused") {
@@ -1374,16 +1390,91 @@
     button.addEventListener("pointerleave", release);
   }
 
+  function clearPointerControl() {
+    pointerControl.tracking = false;
+    pointerControl.dragging = false;
+    pointerControl.pointerId = null;
+    pointerControl.moved = false;
+  }
+
+  function canvasPointFromEvent(event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * W,
+      y: ((event.clientY - rect.top) / rect.height) * H
+    };
+  }
+
+  function pointHitsCup(point) {
+    const local = worldToCup(point.x, point.y);
+    const localY = clamp(local.y, 0, cup.height);
+    const half = halfWidthAt(localY);
+    return local.y >= -54 && local.y <= cup.height + 64 && Math.abs(local.x) <= half + 56;
+  }
+
+  function setDragTarget(point) {
+    pointerControl.targetX = clamp(point.x - pointerControl.grabOffsetX, cup.minX, cup.maxX);
+  }
+
+  function releasePointerCapture(event) {
+    if (!canvas.hasPointerCapture || !canvas.hasPointerCapture(event.pointerId)) return;
+    canvas.releasePointerCapture(event.pointerId);
+  }
+
   canvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    const point = canvasPointFromEvent(event);
+
     if (state === "over") {
-      const rect = canvas.getBoundingClientRect();
-      const x = ((event.clientX - rect.left) / rect.width) * W;
-      const y = ((event.clientY - rect.top) / rect.height) * H;
-      if (x >= W / 2 - 92 && x <= W / 2 + 92 && y >= 450 && y <= 530) {
+      if (point.x >= W / 2 - 92 && point.x <= W / 2 + 92 && point.y >= 450 && point.y <= 530) {
         resetGame();
       }
+      canvas.focus({ preventScroll: true });
+      return;
     }
+
     canvas.focus({ preventScroll: true });
+    if (state !== "playing") return;
+
+    pointerControl.tracking = true;
+    pointerControl.dragging = pointHitsCup(point);
+    pointerControl.pointerId = event.pointerId;
+    pointerControl.startX = point.x;
+    pointerControl.startY = point.y;
+    pointerControl.grabOffsetX = point.x - cup.x;
+    pointerControl.targetX = cup.x;
+    pointerControl.moved = false;
+
+    if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!pointerControl.tracking || event.pointerId !== pointerControl.pointerId) return;
+
+    event.preventDefault();
+    const point = canvasPointFromEvent(event);
+    const dx = point.x - pointerControl.startX;
+    const dy = point.y - pointerControl.startY;
+    if (dx * dx + dy * dy > 9 * 9) pointerControl.moved = true;
+    if (pointerControl.dragging && state === "playing") setDragTarget(point);
+  });
+
+  canvas.addEventListener("pointerup", (event) => {
+    if (!pointerControl.tracking || event.pointerId !== pointerControl.pointerId) return;
+
+    event.preventDefault();
+    const shouldStir = state === "playing" && !pointerControl.moved;
+    releasePointerCapture(event);
+    clearPointerControl();
+    if (shouldStir) stirCup(performance.now());
+  });
+
+  canvas.addEventListener("pointercancel", (event) => {
+    if (!pointerControl.tracking || event.pointerId !== pointerControl.pointerId) return;
+
+    event.preventDefault();
+    releasePointerCapture(event);
+    clearPointerControl();
   });
 
   pauseButton.addEventListener("click", togglePause);

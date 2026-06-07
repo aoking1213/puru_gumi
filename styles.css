@@ -11,16 +11,19 @@
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   display: grid;
   place-items: center;
   overflow-x: hidden;
+  overscroll-behavior: none;
   background: linear-gradient(135deg, #f5fbf2 0%, #d8f2ee 48%, #fff5d7 100%);
 }
 
 .game-shell {
   width: min(100vw, 1020px);
   min-height: 100vh;
+  min-height: 100dvh;
   padding: clamp(10px, 2.4vw, 22px);
   display: grid;
   align-content: center;
@@ -101,6 +104,55 @@ canvas {
   }
 
   .touch-controls button {
+    min-height: 48px;
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  body {
+    place-items: stretch;
+    overflow: hidden;
+  }
+
+  .game-shell {
+    width: 100vw;
+    min-height: 100dvh;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: stretch;
+    padding: 8px;
+    padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    gap: 8px;
+  }
+
+  .game-frame {
+    align-self: center;
+    justify-self: center;
+    width: min(100%, calc((100dvh - 78px) * 900 / 760));
+    max-width: 100%;
+    padding: 4px;
+    box-shadow: 0 14px 36px rgba(68, 96, 102, 0.18);
+  }
+
+  canvas {
+    max-height: calc(100dvh - 78px);
+  }
+
+  .touch-controls {
+    width: max-content;
+    grid-template-columns: 58px 58px;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  #leftButton,
+  #rightButton {
+    display: none;
+  }
+
+  .touch-controls button {
+    min-width: 58px;
     min-height: 48px;
     font-size: 24px;
   }
